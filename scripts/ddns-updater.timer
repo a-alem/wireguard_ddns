@@ -1,0 +1,11 @@
+[Unit]
+Description=Run DDNS Updater periodically
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=60s
+AccuracySec=1s
+Unit=ddns-updater.service
+
+[Install]
+WantedBy=timers.target

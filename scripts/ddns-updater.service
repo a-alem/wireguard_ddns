@@ -1,0 +1,24 @@
+[Unit]
+Description=DDNS Updater
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ddns-updater
+Group=ddns-updater
+ExecStart=/usr/local/bin/ddns-updater --config /etc/ddns-updater/config.yaml
+WorkingDirectory=/var/lib/ddns-updater
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ddns-updater
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native

@@ -1,0 +1,20 @@
+record:
+  zone: helloworld
+  name: helloworld
+  id: helloworld
+  type: A
+  ttl: 60
+
+providers:
+  cloudflare:
+    api_token: token
+    zone_id: helloworld
+    proxied: false
+
+resolvers:
+  ipify:
+    url: https://api.ipify.org
+    response_format: json
+
+state:
+  path: /var/lib/ddns-updater/state.json
