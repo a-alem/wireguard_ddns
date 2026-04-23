@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
-	"os"
 	"time"
 
 	"github.com/a-alem/wireguard_ddns/ddns_updater/internal"
@@ -12,13 +12,14 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatalf("usage: %s <config-file>", os.Args[0])
+	configPath := flag.String("config", "", "path to config file")
+	flag.Parse()
+
+	if *configPath == "" {
+		log.Fatalf("usage: %s --config <config-file>", flag.CommandLine.Name())
 	}
 
-	configPath := os.Args[1]
-
-	cfg, err := internal.LoadConfig(configPath)
+	cfg, err := internal.LoadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
