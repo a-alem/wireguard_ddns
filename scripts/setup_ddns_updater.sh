@@ -14,10 +14,16 @@ SYSTEMD_DIR="/etc/systemd/system"
 SERVICE_DEST_PATH="${SYSTEMD_DIR}/ddns-updater.service"
 TIMER_DEST_PATH="${SYSTEMD_DIR}/ddns-updater.timer"
 
-BINARY_PATH="/usr/local/bin/ddns-updater"
+BINARY_DEST_PATH="/usr/local/bin/ddns-updater"
+TMP_BINARY_PATH="/tmp/ddns-updater"
+
+GITHUB_OWNER="a-alem"
+GITHUB_REPO="wireguard_ddns"
+RELEASE_TAG="latest"
+RELEASE_ASSET="ddns-updater"
 
 usage() {
-  cat <<'EOF'
+  cat <<EOF
 Usage:
   sudo ./setup_ddns_updater.sh <config_yaml_path> <service_file_path> <timer_file_path>
 
@@ -42,6 +48,15 @@ require_file() {
 
   if [[ ! -f "${path}" ]]; then
     echo "Error: ${label} not found: ${path}" >&2
+    exit 1
+  fi
+}
+
+require_command() {
+  local cmd="$1"
+
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "Error: required command not found: ${cmd}" >&2
     exit 1
   fi
 }
@@ -94,13 +109,21 @@ install_systemd_units() {
   chmod 644 "${TIMER_DEST_PATH}"
 }
 
-check_binary() {
-  if [[ ! -x "${BINARY_PATH}" ]]; then
-    echo "Warning: binary not found or not executable at ${BINARY_PATH}" >&2
-    echo "Make sure you already built and copied the binary before starting the service." >&2
-  else
-    echo "Found binary: ${BINARY_PATH}"
-  fi
+download_binary() {
+  local url="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${RELEASE_TAG}/${RELEASE_ASSET}"
+
+  echo "Downloading release binary from:"
+  echo "  ${url}"
+
+  rm -f "${TMP_BINARY_PATH}"
+
+  curl -fL "${url}" -o "${TMP_BINARY_PATH}"
+
+  chmod 755 "${TMP_BINARY_PATH}"
+  mv "${TMP_BINARY_PATH}" "${BINARY_DEST_PATH}"
+  chown root:root "${BINARY_DEST_PATH}"
+
+  echo "Installed binary to ${BINARY_DEST_PATH}"
 }
 
 reload_and_enable_timer() {
@@ -110,7 +133,7 @@ reload_and_enable_timer() {
   echo "Enabling timer..."
   systemctl enable ddns-updater.timer
 
-  echo "Starting timer..."
+  echo "Restarting timer..."
   systemctl restart ddns-updater.timer
 }
 
@@ -137,6 +160,7 @@ main() {
   local timer_src="$3"
 
   require_root
+  require_command curl
   require_file "${config_src}" "Config file"
   require_file "${service_src}" "Service file"
   require_file "${timer_src}" "Timer file"
@@ -145,7 +169,7 @@ main() {
   prepare_directories
   install_config "${config_src}"
   install_systemd_units "${service_src}" "${timer_src}"
-  check_binary
+  download_binary
   reload_and_enable_timer
   print_status
 }
