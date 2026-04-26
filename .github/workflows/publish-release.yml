@@ -1,23 +1,25 @@
-name: Publish Release
+name: Release Flow
 
 on:
   push:
     branches:
-      - release
+      - master
     paths:
-      - 'ddns_updater/VERSION'
       - 'ddns_updater/**'
       - '.github/workflows/**'
+      - '.github/CODEOWNERS'
+      - 'scripts/**'
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
-  group: publish-release
+  group: release-flow
   cancel-in-progress: false
 
 jobs:
-  publish:
+  decide-and-act:
     runs-on: ubuntu-latest
 
     defaults:
@@ -30,48 +32,217 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read version
-        id: version
+      - name: Fetch tags
+        run: git fetch --tags
+
+      - name: Find PR associated with this push
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: .
         shell: bash
         run: |
           set -euo pipefail
+
+          pr_json="$(gh api \
+            repos/${{ github.repository }}/commits/${{ github.sha }}/pulls \
+            -H 'Accept: application/vnd.github+json' || true)"
+
+          pr_count="$(echo "${pr_json}" | jq 'length')"
+
+          if [[ "${pr_count}" -eq 0 ]]; then
+            echo "has_pr=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          head_ref="$(echo "${pr_json}" | jq -r '.[0].head.ref')"
+          pr_number="$(echo "${pr_json}" | jq -r '.[0].number')"
+
+          echo "has_pr=true" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${head_ref}" >> "$GITHUB_OUTPUT"
+          echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine mode
+        id: mode
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ steps.pr.outputs.has_pr }}" == "true" ]] && [[ "${{ steps.pr.outputs.head_ref }}" == release-pr/* ]]; then
+            echo "mode=publish" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=prepare" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine next version
+        if: steps.mode.outputs.mode == 'prepare'
+        id: version
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(git tag --list 'v0.*' --sort=-version:refname | head -n1)"
+
+          if [[ -z "${latest_tag}" ]]; then
+            next_version="0.1.0"
+            next_tag="v0.1.0"
+            release_branch="release-pr/v0.1.0"
+          else
+            ver="${latest_tag#v}"
+            major="${ver%%.*}"
+            rest="${ver#*.}"
+            minor="${rest%%.*}"
+            patch="${rest##*.}"
+
+            commit_msg="$(git log -1 --pretty=%B)"
+
+            if [[ "${commit_msg}" == *"[minor]"* ]]; then
+              minor=$((minor + 1))
+              patch=0
+            else
+              patch=$((patch + 1))
+            fi
+
+            next_version="${major}.${minor}.${patch}"
+            next_tag="v${next_version}"
+            release_branch="release-pr/${next_tag}"
+          fi
+
+          echo "next_version=${next_version}" >> "$GITHUB_OUTPUT"
+          echo "next_tag=${next_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_branch=${release_branch}" >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing open release PR
+        if: steps.mode.outputs.mode == 'prepare'
+        id: existing_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_number="$(gh pr list \
+            --base master \
+            --head "${{ steps.version.outputs.release_branch }}" \
+            --state open \
+            --json number \
+            --jq '.[0].number')"
+
+          if [[ -n "${pr_number}" && "${pr_number}" != "null" ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "number=${pr_number}" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop if release PR already exists
+        if: steps.mode.outputs.mode == 'prepare' && steps.existing_pr.outputs.exists == 'true'
+        run: |
+          echo "Release PR already exists: #${{ steps.existing_pr.outputs.number }}"
+
+      - name: Prepare release branch
+        if: steps.mode.outputs.mode == 'prepare' && steps.existing_pr.outputs.exists == 'false'
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "${{ steps.version.outputs.release_branch }}"
+          echo "${{ steps.version.outputs.next_version }}" > ddns_updater/VERSION
+
+          git add ddns_updater/VERSION
+
+          if git diff --cached --quiet; then
+            echo "No VERSION change detected. Skipping."
+            exit 0
+          fi
+
+          git commit -m "chore(release): prepare ${{ steps.version.outputs.next_tag }}"
+          git push origin "${{ steps.version.outputs.release_branch }}" --force
+
+      - name: Create release PR
+        if: steps.mode.outputs.mode == 'prepare' && steps.existing_pr.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh pr create \
+            --base master \
+            --head "${{ steps.version.outputs.release_branch }}" \
+            --title "Release ${{ steps.version.outputs.next_tag }}" \
+            --body "Automated release PR for ${{ steps.version.outputs.next_tag }}.
+
+          - Updates ddns_updater/VERSION
+          - Targets protected master branch
+          - Must be approved by CODEOWNER before merge
+          - Tag and GitHub Release will be created only after this PR is merged"
+
+      - name: Read release version
+        if: steps.mode.outputs.mode == 'publish'
+        id: release_version
+        shell: bash
+        run: |
+          set -euo pipefail
+
           version="$(tr -d '[:space:]' < VERSION)"
           if [[ -z "${version}" ]]; then
             echo "VERSION file is empty" >&2
             exit 1
           fi
+
+          if [[ "${version}" == *-dev ]]; then
+            echo "Refusing to publish a dev version: ${version}" >&2
+            exit 1
+          fi
+
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
 
       - name: Check whether tag already exists
+        if: steps.mode.outputs.mode == 'publish'
         id: tagcheck
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
+
           git fetch --tags
-          if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+
+          if git rev-parse "${{ steps.release_version.outputs.tag }}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Stop if tag already exists
+        if: steps.mode.outputs.mode == 'publish' && steps.tagcheck.outputs.exists == 'true'
+        run: |
+          echo "Tag ${{ steps.release_version.outputs.tag }} already exists. Skipping."
+
       - name: Set up Go
-        if: steps.tagcheck.outputs.exists == 'false'
+        if: steps.mode.outputs.mode == 'publish' && steps.tagcheck.outputs.exists == 'false'
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.x'
 
       - name: Download dependencies
-        if: steps.tagcheck.outputs.exists == 'false'
+        if: steps.mode.outputs.mode == 'publish' && steps.tagcheck.outputs.exists == 'false'
         run: go mod download
 
       - name: Run tests
-        if: steps.tagcheck.outputs.exists == 'false'
+        if: steps.mode.outputs.mode == 'publish' && steps.tagcheck.outputs.exists == 'false'
         run: go test ./...
 
       - name: Build release binaries
-        if: steps.tagcheck.outputs.exists == 'false'
+        if: steps.mode.outputs.mode == 'publish' && steps.tagcheck.outputs.exists == 'false'
         env:
           CGO_ENABLED: 0
         run: |
@@ -80,21 +251,23 @@ jobs:
           GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/ddns-updater-linux-arm64 .
 
       - name: Create tag
-        if: steps.tagcheck.outputs.exists == 'false'
+        if: steps.mode.outputs.mode == 'publish' && steps.tagcheck.outputs.exists == 'false'
         working-directory: .
         shell: bash
         run: |
           set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+
+          git tag "${{ steps.release_version.outputs.tag }}"
+          git push origin "${{ steps.release_version.outputs.tag }}"
 
       - name: Create GitHub release
-        if: steps.tagcheck.outputs.exists == 'false'
+        if: steps.mode.outputs.mode == 'publish' && steps.tagcheck.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ steps.release_version.outputs.tag }}
           generate_release_notes: true
           files: |
             ddns_updater/dist/ddns-updater-linux-amd64
