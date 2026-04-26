@@ -3,6 +3,7 @@ Affordable WireGuard tunnels made easy.
 
 ## 🌟 Highlights
 - Establish seamless ddns resolution services
+- Multiple DNS providers and public IP resolvers support
 - Extensible and modular design written in Go
 - Non-negotiable small package size, and limited number of 3rd party packages used by design.
 - Services are created with systemd and systemd timers
