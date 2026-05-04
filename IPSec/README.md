@@ -4,7 +4,7 @@ The main goal here is to perform a comparison between WireGuard and IPSec and co
 ## 🛠️ Infrastructure
 IPSec was deployed in AWS, similar to how WireGuard was deployed, and the infrastructure code can be found in the `/terraform` directory.
 
-## Security Associations
+## 🔐 Security Associations
 The template can be found here in `security_association_example.conf`, please replace the public IPs with the actual ones, and the PSK with what you generated.
 Also, this requires installations at both sites, so for the other site, just reverse the order of the IPs -> A becomes B, and B becomes A
 
@@ -74,7 +74,8 @@ For TCP multi-stream tests:
 iperf3 -c <other_hosts_ipsec_loopback_addr> -B <this_hosts_ipsec_loopback_addr> -t <test_duration_time_in_seconds> -P <number_of_streams>
 ```
 
-For UDP:
+### UDP
+For UDP, setting `-b 0` means send at best effort, or you can select a specific bandwidth like `-b 10M` which means bandwidth of 10Mbps:
 ```bash
 iperf3 -c <other_hosts_ipsec_loopback_addr> -B <this_hosts_ipsec_loopback_addr> -u -b <bandwidth> -t <test_duration_time_in_seconds>
 ```
