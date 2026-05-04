@@ -125,7 +125,7 @@ resource "aws_subnet" "vpn_remote_subnet_private" {
 }
 
 // Security groups
-// For onprem subnet:
+// For onprem subnet - WireGuard:
 resource "aws_security_group" "allow_ssh_wireguard_onprem" {
   name        = "allow_ssh_wireguard_onprem"
   description = "Allow SSH and wireguard inbound traffic and all outbound traffic for onprem subnet"
@@ -152,6 +152,14 @@ resource "aws_vpc_security_group_ingress_rule" "allow_wireguard_onprem" {
   to_port           = 51820
 }
 
+resource "aws_vpc_security_group_ingress_rule" "allow_wireguard_onprem_iperf" {
+  security_group_id = aws_security_group.allow_ssh_wireguard_onprem.id
+  cidr_ipv4        = "0.0.0.0/0"
+  from_port         = 5201
+  ip_protocol       = "tcp"
+  to_port           = 5201
+}
+
 resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4_onprem" {
   security_group_id = aws_security_group.allow_ssh_wireguard_onprem.id
   cidr_ipv4         = "0.0.0.0/0"
@@ -164,7 +172,7 @@ resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv6_onprem" {
   ip_protocol       = "-1" # all ports
 }
 
-// For remote subnet:
+// For remote subnet - WireGuard:
 resource "aws_security_group" "allow_ssh_wireguard_remote" {
   name        = "allow_ssh_wireguard_remote"
   description = "Allow SSH and wireguard inbound traffic and all outbound traffic for remote subnet"
@@ -191,6 +199,14 @@ resource "aws_vpc_security_group_ingress_rule" "allow_wireguard_remote" {
   to_port          = 51820
 }
 
+resource "aws_vpc_security_group_ingress_rule" "allow_wireguard_remote_iperf" {
+  security_group_id = aws_security_group.allow_ssh_wireguard_remote.id
+  cidr_ipv4        = "0.0.0.0/0"
+  from_port         = 5201
+  ip_protocol       = "tcp"
+  to_port           = 5201
+}
+
 resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4_remote" {
   security_group_id = aws_security_group.allow_ssh_wireguard_remote.id
   cidr_ipv4         = "0.0.0.0/0"
@@ -199,6 +215,129 @@ resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4_remote" {
 
 resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv6_remote" {
   security_group_id = aws_security_group.allow_ssh_wireguard_remote.id
+  cidr_ipv6         = "::/0"
+  ip_protocol       = "-1" # all ports
+}
+
+// For onprem subnet - IPSec:
+// On premise
+resource "aws_security_group" "allow_ssh_ipsec_onprem" {
+  name        = "allow_ssh_ipsec_onprem"
+  description = "Allow SSH and IPSec inbound traffic and all outbound traffic for onprem subnet"
+  vpc_id      = aws_vpc.vpn_onprem_vpc.id
+
+  tags = {
+    Name = "allow_ssh_ipsec_onprem"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_ssh_onprem_ipsec" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_onprem.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 22
+  ip_protocol       = "tcp"
+  to_port           = 22
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_onprem_ipsec_ike" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_onprem.id
+  cidr_ipv4        = "0.0.0.0/0"
+  from_port         = 500
+  ip_protocol       = "udp"
+  to_port           = 500
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_onprem_ipsec_nat" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_onprem.id
+  cidr_ipv4        = "0.0.0.0/0"
+  from_port         = 4500
+  ip_protocol       = "udp"
+  to_port           = 4500
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_onprem_ipsec_esp" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_onprem.id
+  cidr_ipv4        = "0.0.0.0/0"
+  ip_protocol       = "50"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_onprem_ipsec_iperf" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_onprem.id
+  cidr_ipv4        = "0.0.0.0/0"
+  from_port         = 5201
+  ip_protocol       = "tcp"
+  to_port           = 5201
+}
+
+resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4_onprem_ipsec" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_onprem.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1" # all ports
+}
+
+resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv6_onprem_ipsec" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_onprem.id
+  cidr_ipv6         = "::/0"
+  ip_protocol       = "-1" # all ports
+}
+
+// Remote
+resource "aws_security_group" "allow_ssh_ipsec_remote" {
+  name        = "allow_ssh_ipsec_remote"
+  description = "Allow SSH and IPSec inbound traffic and all outbound traffic for remote subnet"
+  vpc_id      = aws_vpc.vpn_remote_vpc.id
+
+  tags = {
+    Name = "allow_ssh_ipsec_remote"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_ssh_remote_ipsec" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_remote.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 22
+  ip_protocol       = "tcp"
+  to_port           = 22
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_remote_ipsec_ike" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_remote.id
+  cidr_ipv4        = "0.0.0.0/0"
+  from_port         = 500
+  ip_protocol       = "udp"
+  to_port           = 500
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_remote_ipsec_nat" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_remote.id
+  cidr_ipv4        = "0.0.0.0/0"
+  from_port         = 4500
+  ip_protocol       = "udp"
+  to_port           = 4500
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_remote_ipsec_esp" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_remote.id
+  cidr_ipv4        = "0.0.0.0/0"
+  ip_protocol       = "50"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_remote_ipsec_iperf" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_remote.id
+  cidr_ipv4        = "0.0.0.0/0"
+  from_port         = 5201
+  ip_protocol       = "tcp"
+  to_port           = 5201
+}
+
+resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4_remote_ipsec" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_remote.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1" # all ports
+}
+
+resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv6_remote_ipsec" {
+  security_group_id = aws_security_group.allow_ssh_ipsec_remote.id
   cidr_ipv6         = "::/0"
   ip_protocol       = "-1" # all ports
 }
