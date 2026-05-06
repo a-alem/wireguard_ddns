@@ -14,7 +14,18 @@ prefixes:
 
 derp:
   server:
-    enabled: false
+    enabled: true
+    region_id: 999
+    region_code: headscale
+    region_name: Headscale Embedded DERP
+    ipv4: YOUR_EC2_PUBLIC_IP
+    verify_clients: true
+    stun_listen_addr: "0.0.0.0:3478"
+  urls: []
+
+dns:
+  override_local_dns: false
+  magic_dns: false
 
 database:
   type: sqlite

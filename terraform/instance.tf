@@ -59,7 +59,7 @@ resource "aws_instance" "vpn_remote_server" {
 // TailScale instance
 resource "aws_instance" "vpn_tailscale_server" {
   ami = "ami-0281b0943230d40d1"
-  instance_type = "t3.nano"
+  instance_type = "t3.medium"
   availability_zone = var.av_zone
   subnet_id = aws_subnet.vpn_onprem_subnet_public.id
   key_name = aws_key_pair.wireguard_tailscale.key_name
