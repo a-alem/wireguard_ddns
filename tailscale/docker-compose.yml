@@ -1,0 +1,70 @@
+services:
+  traefik:
+    image: traefik:v3.4
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/letsencrypt:/letsencrypt
+    networks:
+      - headscale_net
+
+  headscale:
+    image: docker.io/headscale/headscale:${HEADSCALE_VERSION}
+    container_name: headscale
+    restart: unless-stopped
+    command: serve
+    read_only: true
+    tmpfs:
+      - /var/run/headscale
+    volumes:
+      - ./headscale/config:/etc/headscale:ro
+      - ./headscale/data:/var/lib/headscale
+    healthcheck:
+      test: ["CMD", "headscale", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    labels:
+      - traefik.enable=true
+
+      - traefik.http.routers.headscale.rule=Host(`${HEADSCALE_DOMAIN}`)
+      - traefik.http.routers.headscale.entrypoints=websecure
+      - traefik.http.routers.headscale.tls=true
+      - traefik.http.routers.headscale.tls.certresolver=letsencrypt
+
+      - traefik.http.services.headscale.loadbalancer.server.port=8080
+    networks:
+      - headscale_net
+
+  headplane:
+    image: ghcr.io/tale/headplane:${HEADPLANE_VERSION}
+    container_name: headplane
+    restart: unless-stopped
+    volumes:
+      - ./headplane/config:/etc/headplane:ro
+      - ./headplane/data:/var/lib/headplane
+      - ./headscale/config:/etc/headscale:ro
+    depends_on:
+      - headscale
+    labels:
+      - traefik.enable=true
+
+      - traefik.http.routers.headplane.rule=Host(`${HEADPLANE_DOMAIN}`)
+      - traefik.http.routers.headplane.entrypoints=websecure
+      - traefik.http.routers.headplane.tls=true
+      - traefik.http.routers.headplane.tls.certresolver=letsencrypt
+
+      - traefik.http.services.headplane.loadbalancer.server.port=3000
+    networks:
+      - headscale_net
+
+networks:
+  headscale_net:
+    driver: bridge

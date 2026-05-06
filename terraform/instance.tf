@@ -9,6 +9,11 @@ resource "aws_key_pair" "wireguard-remote" {
   public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINFR/W1JRUUIEXIOI8PVBFN5Tt80ozTJ1Atof76kZsc0 remote wireguard"
 }
 
+resource "aws_key_pair" "wireguard_tailscale" {
+  key_name   = "kfupm-wireguard-tailscale-key"
+  public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIG/1AhTOpThw3EC68spNMr1whq33GI1yTLwyWKM2euW tailscale"
+}
+
 // Key pairs - IPSec instances
 resource "aws_key_pair" "ipsec_onprem" {
   key_name   = "kfupm-ipsec-onprem-key"
@@ -51,21 +56,37 @@ resource "aws_instance" "vpn_remote_server" {
   }
 }
 
-// Instances EC2 - IPSec
-resource "aws_instance" "vpn_onprem_server_ipsec" {
+// TailScale instance
+resource "aws_instance" "vpn_tailscale_server" {
   ami = "ami-0281b0943230d40d1"
   instance_type = "t3.nano"
   availability_zone = var.av_zone
   subnet_id = aws_subnet.vpn_onprem_subnet_public.id
-  key_name = aws_key_pair.ipsec_onprem.key_name
+  key_name = aws_key_pair.wireguard_tailscale.key_name
   vpc_security_group_ids = [
-    aws_security_group.allow_ssh_ipsec_onprem.id
+    aws_security_group.allow_ssh_wireguard_onprem.id
   ]
 
   tags = {
-    Name = "ipsec-vpn-terminal-server-onprem"
+    Name = "vpn-tailscale-server-onpremise"
   }
 }
+
+// Instances EC2 - IPSec
+# resource "aws_instance" "vpn_onprem_server_ipsec" {
+#   ami = "ami-0281b0943230d40d1"
+#   instance_type = "t3.nano"
+#   availability_zone = var.av_zone
+#   subnet_id = aws_subnet.vpn_onprem_subnet_public.id
+#   key_name = aws_key_pair.ipsec_onprem.key_name
+#   vpc_security_group_ids = [
+#     aws_security_group.allow_ssh_ipsec_onprem.id
+#   ]
+#
+#   tags = {
+#     Name = "ipsec-vpn-terminal-server-onprem"
+#   }
+# }
 
 resource "aws_instance" "vpn_remote_server_ipsec" {
   ami = "ami-0281b0943230d40d1"
